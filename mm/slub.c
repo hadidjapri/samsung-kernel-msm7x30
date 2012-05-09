@@ -2273,16 +2273,16 @@ new_slab:
 	/* Then do expensive stuff like retrieving pages from the partial lists */
 	object = get_partial(s, gfpflags, node, c);
 
-	if (unlikely(!object)) {
+	if ((!object)) {
 
 		object = new_slab_objects(s, gfpflags, node, &c);
 
-		if (unlikely(!object)) {
-			if (!(gfpflags & __GFP_NOWARN) && printk_ratelimit())
-				slab_out_of_memory(s, gfpflags, node);
+	if (unlikely(!object)) {
+		if (!(gfpflags & __GFP_NOWARN) && printk_ratelimit())
+			slab_out_of_memory(s, gfpflags, node);
 
-			local_irq_restore(flags);
-			return NULL;
+		local_irq_restore(flags);
+		return NULL;
 		}
 	}
 
