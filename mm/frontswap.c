@@ -140,17 +140,17 @@ int __frontswap_put_page(struct page *page)
 		inc_frontswap_succ_puts();
 		if (!dup)
 			atomic_inc(&sis->frontswap_pages);
-	} else if (dup) {
+	} else {
 		/*
 		  failed dup always results in automatic invalidate of
 		  the (older) page from frontswap
 		 */
-		frontswap_clear(sis, offset);
-		atomic_dec(&sis->frontswap_pages);
-		inc_frontswap_failed_puts();
-	} else
-		inc_frontswap_failed_puts();
-	if (frontswap_writethrough_enabled)
+		if (dup) {
+			frontswap_clear(sis, offset);
+			atomic_dec(&sis->frontswap_pages);
+		}
+	}
+		if (frontswap_writethrough_enabled)
 		/* report failure so swap also writes to swap device */
 		ret = -1;
 	return ret;
