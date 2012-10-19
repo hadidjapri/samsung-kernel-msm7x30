@@ -109,4 +109,11 @@ static inline bool __rcu_reclaim(char *rn, struct rcu_head *head)
 	}
 }
 
+#ifdef CONFIG_RCU_STALL_COMMON
+
+extern int rcu_cpu_stall_suppress;
+int rcu_jiffies_till_stall_check(void);
+
+#endif /* #ifdef CONFIG_RCU_STALL_COMMON */
+
 #endif /* __LINUX_RCU_H */

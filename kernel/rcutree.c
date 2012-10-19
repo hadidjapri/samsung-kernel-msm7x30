@@ -210,12 +210,6 @@ module_param(blimit, long, 0);
 module_param(qhimark, long, 0);
 module_param(qlowmark, long, 0);
 
-int rcu_cpu_stall_suppress __read_mostly; /* 1 = suppress stall warnings. */
-int rcu_cpu_stall_timeout __read_mostly = CONFIG_RCU_CPU_STALL_TIMEOUT;
-
-module_param(rcu_cpu_stall_suppress, int, 0644);
-module_param(rcu_cpu_stall_timeout, int, 0644);
-
 static void force_quiescent_state(struct rcu_state *rsp, int relaxed);
 static int rcu_pending(int cpu);
 
@@ -697,28 +691,10 @@ static int rcu_implicit_dynticks_qs(struct rcu_data *rdp)
 	return rcu_implicit_offline_qs(rdp);
 }
 
-static int jiffies_till_stall_check(void)
-{
-	int till_stall_check = ACCESS_ONCE(rcu_cpu_stall_timeout);
-
-	/*
-	 * Limit check must be consistent with the Kconfig limits
-	 * for CONFIG_RCU_CPU_STALL_TIMEOUT.
-	 */
-	if (till_stall_check < 3) {
-		ACCESS_ONCE(rcu_cpu_stall_timeout) = 3;
-		till_stall_check = 3;
-	} else if (till_stall_check > 300) {
-		ACCESS_ONCE(rcu_cpu_stall_timeout) = 300;
-		till_stall_check = 300;
-	}
-	return till_stall_check * HZ + RCU_STALL_DELAY_DELTA;
-}
-
 static void record_gp_stall_check_time(struct rcu_state *rsp)
 {
 	rsp->gp_start = jiffies;
-	rsp->jiffies_stall = jiffies + jiffies_till_stall_check();
+	rsp->jiffies_stall = jiffies + rcu_jiffies_till_stall_check();
 }
 
 static void print_other_cpu_stall(struct rcu_state *rsp)
@@ -737,7 +713,7 @@ static void print_other_cpu_stall(struct rcu_state *rsp)
 		raw_spin_unlock_irqrestore(&rnp->lock, flags);
 		return;
 	}
-	rsp->jiffies_stall = jiffies + 3 * jiffies_till_stall_check() + 3;
+	rsp->jiffies_stall = jiffies + 3 * rcu_jiffies_till_stall_check() + 3;
 	raw_spin_unlock_irqrestore(&rnp->lock, flags);
 
 	/*
@@ -806,7 +782,7 @@ static void print_cpu_stall(struct rcu_state *rsp)
 	raw_spin_lock_irqsave(&rnp->lock, flags);
 	if (ULONG_CMP_GE(jiffies, rsp->jiffies_stall))
 		rsp->jiffies_stall = jiffies +
-				     3 * jiffies_till_stall_check() + 3;
+				     3 * rcu_jiffies_till_stall_check() + 3;
 	raw_spin_unlock_irqrestore(&rnp->lock, flags);
 
 	set_need_resched();  /* kick ourselves to get things going. */
@@ -836,12 +812,6 @@ static void check_cpu_stall(struct rcu_state *rsp, struct rcu_data *rdp)
 	}
 }
 
-static int rcu_panic(struct notifier_block *this, unsigned long ev, void *ptr)
-{
-	rcu_cpu_stall_suppress = 1;
-	return NOTIFY_DONE;
-}
-
 /**
  * rcu_cpu_stall_reset - prevent further stall warnings in current grace period
  *
@@ -856,15 +826,6 @@ void rcu_cpu_stall_reset(void)
 	rcu_sched_state.jiffies_stall = jiffies + ULONG_MAX / 2;
 	rcu_bh_state.jiffies_stall = jiffies + ULONG_MAX / 2;
 	rcu_preempt_stall_reset();
-}
-
-static struct notifier_block rcu_panic_block = {
-	.notifier_call = rcu_panic,
-};
-
-static void __init check_cpu_stall_init(void)
-{
-	atomic_notifier_chain_register(&panic_notifier_list, &rcu_panic_block);
 }
 
 /*
@@ -2519,7 +2480,6 @@ void __init rcu_init(void)
 	cpu_notifier(rcu_cpu_notify, 0);
 	for_each_online_cpu(cpu)
 		rcu_cpu_notify(NULL, CPU_UP_PREPARE, (void *)(long)cpu);
-	check_cpu_stall_init();
 }
 
 #include "rcutree_plugin.h"
