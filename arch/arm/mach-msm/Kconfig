@@ -2526,4 +2526,9 @@ config MSM_HSIC_SYSMON_TEST
 	help
 	  A simple sysfs interface to force adapters that
 	  are detected as USB to charge as AC.
+
+config HADIMEM
+	bool "hadi ramconfig"
+	help
+	  Gain more RAM by sacrificing pmem
 endif
