@@ -122,7 +122,7 @@ static void bdi_queue_work(struct backing_dev_info *bdi,
 
 static void
 __bdi_start_writeback(struct backing_dev_info *bdi, long nr_pages,
-		      bool range_cyclic, enum wb_reason reason)
+		      bool range_cyclic)
 {
 	struct wb_writeback_work *work;
 
@@ -142,7 +142,6 @@ __bdi_start_writeback(struct backing_dev_info *bdi, long nr_pages,
 	work->sync_mode	= WB_SYNC_NONE;
 	work->nr_pages	= nr_pages;
 	work->range_cyclic = range_cyclic;
-	work->reason	= reason;
 
 	bdi_queue_work(bdi, work);
 }
@@ -162,7 +161,7 @@ __bdi_start_writeback(struct backing_dev_info *bdi, long nr_pages,
 void bdi_start_writeback(struct backing_dev_info *bdi, long nr_pages,
 			enum wb_reason reason)
 {
-	__bdi_start_writeback(bdi, nr_pages, true, reason);
+	__bdi_start_writeback(bdi, nr_pages, true);
 }
 
 /**
@@ -995,20 +994,22 @@ int bdi_writeback_thread(void *data)
  * Start writeback of `nr_pages' pages.  If `nr_pages' is zero, write back
  * the whole world.
  */
-void wakeup_flusher_threads(long nr_pages, enum wb_reason reason)
+void wakeup_flusher_threads(long nr_pages)
 {
-	struct backing_dev_info *bdi;
+struct backing_dev_info *bdi;
 
-	if (!nr_pages)
-		nr_pages = get_nr_dirty_pages();
+if (!nr_pages) {
+nr_pages = global_page_state(NR_FILE_DIRTY) +
+global_page_state(NR_UNSTABLE_NFS);
+}
 
-	rcu_read_lock();
-	list_for_each_entry_rcu(bdi, &bdi_list, bdi_list) {
-		if (!bdi_has_dirty_io(bdi))
-			continue;
-		__bdi_start_writeback(bdi, nr_pages, false, reason);
-	}
-	rcu_read_unlock();
+rcu_read_lock();
+list_for_each_entry_rcu(bdi, &bdi_list, bdi_list) {
+if (!bdi_has_dirty_io(bdi))
+continue;
+__bdi_start_writeback(bdi, nr_pages, false);
+}
+rcu_read_unlock();
 }
 
 static noinline void block_dump___mark_inode_dirty(struct inode *inode)
