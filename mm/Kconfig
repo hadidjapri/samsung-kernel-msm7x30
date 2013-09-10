@@ -272,6 +272,12 @@ config KSM_LEGACY
 	  The legacy KSM implementation from Redhat.
 endchoice
 
+config SWAPPINESS
+	int "tune swappiness value"
+	default 35
+	help
+	 use this to tune swappiness value
+
 config DEFAULT_MMAP_MIN_ADDR
         int "Low address space to protect from user allocation"
 	depends on MMU

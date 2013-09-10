@@ -16,6 +16,11 @@ config ZRAM
 	  See zram.txt for more information.
 	  Project home: http://compcache.googlecode.com/
 
+config SWAPPINESS_ZRAM
+	depends on ZRAM
+	int "swappiness value when using zRAM"
+	default 90
+
 config ZRAM_DEBUG
 	bool "Compressed RAM block device debug support"
 	depends on ZRAM
