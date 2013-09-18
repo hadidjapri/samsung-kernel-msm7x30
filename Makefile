@@ -4,6 +4,12 @@ SUBLEVEL = 62
 EXTRAVERSION =
 NAME = Saber-toothed Squirrel
 
+#ifdef CONFIG_SCHED_BFS=y
+CKVERSION = -ck3
+CKNAME = BFS Powered
+EXTRAVERSION := $(EXTRAVERSION)$(CKVERSION)
+#endif
+
 # *DOCUMENTATION*
 # To see a list of typical targets execute "make help"
 # More info can be located in ./README
