@@ -16,71 +16,123 @@
  *  Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA  02110-1301, USA.
  */
 
+/************************************************************************/
+/*                                                                      */
+/*  PROJECT : exFAT & FAT12/16/32 File System                           */
+/*  FILE    : exfat_api.c                                               */
+/*  PURPOSE : exFAT API Glue Layer                                      */
+/*                                                                      */
+/*----------------------------------------------------------------------*/
+/*  NOTES                                                               */
+/*                                                                      */
+/*----------------------------------------------------------------------*/
+/*  REVISION HISTORY (Ver 0.9)                                          */
+/*                                                                      */
+/*  - 2010.11.15 [Joosun Hahn] : first writing                          */
+/*                                                                      */
+/************************************************************************/
+
 #include <linux/version.h>
 #include <linux/module.h>
 #include <linux/init.h>
 
 #include "exfat_version.h"
 #include "exfat_config.h"
-#include "exfat_global.h"
 #include "exfat_data.h"
 #include "exfat_oal.h"
 
-#include "exfat_part.h"
 #include "exfat_nls.h"
 #include "exfat_api.h"
 #include "exfat_super.h"
-#include "exfat.h"
+#include "exfat_core.h"
+
+/*----------------------------------------------------------------------*/
+/*  Constant & Macro Definitions                                        */
+/*----------------------------------------------------------------------*/
+
+/*----------------------------------------------------------------------*/
+/*  Global Variable Definitions                                         */
+/*----------------------------------------------------------------------*/
 
 extern FS_STRUCT_T      fs_struct[];
 
 extern struct semaphore z_sem;
 
-INT32 FsInit(void)
-{
-	INT32 i;
+/*----------------------------------------------------------------------*/
+/*  Local Variable Definitions                                          */
+/*----------------------------------------------------------------------*/
 
+/*----------------------------------------------------------------------*/
+/*  Local Function Declarations                                         */
+/*----------------------------------------------------------------------*/
+
+/*======================================================================*/
+/*  Global Function Definitions                                         */
+/*    - All functions for global use have same return value format,     */
+/*      that is, FFS_SUCCESS on success and several FS error code on    */
+/*      various error condition.                                        */
+/*======================================================================*/
+
+/*----------------------------------------------------------------------*/
+/*  exFAT Filesystem Init & Exit Functions                              */
+/*----------------------------------------------------------------------*/
+
+s32 FsInit(void)
+{
+	s32 i;
+
+	/* initialize all volumes as un-mounted */
 	for (i = 0; i < MAX_DRIVE; i++) {
 		fs_struct[i].mounted = FALSE;
 		fs_struct[i].sb = NULL;
 		sm_init(&(fs_struct[i].v_sem));
 	}
 
-	return(ffsInit());
+	return ffsInit();
 }
 
-INT32 FsShutdown(void)
+s32 FsShutdown(void)
 {
-	INT32 i;
+	s32 i;
 
+	/* unmount all volumes */
 	for (i = 0; i < MAX_DRIVE; i++) {
-		if (!fs_struct[i].mounted) continue;
+		if (!fs_struct[i].mounted)
+			continue;
 
 		ffsUmountVol(fs_struct[i].sb);
 	}
 
-	return(ffsShutdown());
+	return ffsShutdown();
 }
 
-INT32 FsMountVol(struct super_block *sb)
+/*----------------------------------------------------------------------*/
+/*  Volume Management Functions                                         */
+/*----------------------------------------------------------------------*/
+
+/* FsMountVol : mount the file system volume */
+s32 FsMountVol(struct super_block *sb)
 {
-	INT32 err, drv;
+	s32 err, drv;
 
 	sm_P(&z_sem);
 
 	for (drv = 0; drv < MAX_DRIVE; drv++) {
-		if (!fs_struct[drv].mounted) break;
+		if (!fs_struct[drv].mounted)
+			break;
 	}
 
-	if (drv >= MAX_DRIVE) return(FFS_ERROR);
+	if (drv >= MAX_DRIVE)
+		return FFS_ERROR;
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[drv].v_sem));
 
 	err = buf_init(sb);
-	if (!err) {
+	if (!err)
 		err = ffsMountVol(sb, drv);
-	}
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[drv].v_sem));
 
 	if (!err) {
@@ -92,21 +144,24 @@ INT32 FsMountVol(struct super_block *sb)
 
 	sm_V(&z_sem);
 
-	return(err);
-}
+	return err;
+} /* end of FsMountVol */
 
-INT32 FsUmountVol(struct super_block *sb)
+/* FsUmountVol : unmount the file system volume */
+s32 FsUmountVol(struct super_block *sb)
 {
-	INT32 err;
+	s32 err;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
 	sm_P(&z_sem);
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsUmountVol(sb);
 	buf_shutdown(sb);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
 	fs_struct[p_fs->drv].mounted = FALSE;
@@ -114,283 +169,361 @@ INT32 FsUmountVol(struct super_block *sb)
 
 	sm_V(&z_sem);
 
-	return(err);
-}
+	return err;
+} /* end of FsUmountVol */
 
-INT32 FsGetVolInfo(struct super_block *sb, VOL_INFO_T *info)
+/* FsGetVolInfo : get the information of a file system volume */
+s32 FsGetVolInfo(struct super_block *sb, VOL_INFO_T *info)
 {
-	INT32 err;
+	s32 err;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
-	if (info == NULL) return(FFS_ERROR);
+	/* check the validity of pointer parameters */
+	if (info == NULL)
+		return FFS_ERROR;
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsGetVolInfo(sb, info);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-}
+	return err;
+} /* end of FsGetVolInfo */
 
-INT32 FsSyncVol(struct super_block *sb, INT32 do_sync)
+/* FsSyncVol : synchronize a file system volume */
+s32 FsSyncVol(struct super_block *sb, s32 do_sync)
 {
-	INT32 err;
+	s32 err;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsSyncVol(sb, do_sync);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-}
+	return err;
+} /* end of FsSyncVol */
 
-INT32 FsLookupFile(struct inode *inode, UINT8 *path, FILE_ID_T *fid)
+
+/*----------------------------------------------------------------------*/
+/*  File Operation Functions                                            */
+/*----------------------------------------------------------------------*/
+
+/* FsCreateFile : create a file */
+s32 FsLookupFile(struct inode *inode, char *path, FILE_ID_T *fid)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
-	if ((fid == NULL) || (path == NULL) || (STRLEN(path) == 0))
-		return(FFS_ERROR);
+	/* check the validity of pointer parameters */
+	if ((fid == NULL) || (path == NULL) || (*path == '\0'))
+		return FFS_ERROR;
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsLookupFile(inode, path, fid);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-}
+	return err;
+} /* end of FsLookupFile */
 
-INT32 FsCreateFile(struct inode *inode, UINT8 *path, UINT8 mode, FILE_ID_T *fid)
+/* FsCreateFile : create a file */
+s32 FsCreateFile(struct inode *inode, char *path, u8 mode, FILE_ID_T *fid)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
-	if ((fid == NULL) || (path == NULL) || (STRLEN(path) == 0))
-		return(FFS_ERROR);
+	/* check the validity of pointer parameters */
+	if ((fid == NULL) || (path == NULL) || (*path == '\0'))
+		return FFS_ERROR;
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsCreateFile(inode, path, mode, fid);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-}
+	return err;
+} /* end of FsCreateFile */
 
-INT32 FsReadFile(struct inode *inode, FILE_ID_T *fid, void *buffer, UINT64 count, UINT64 *rcount)
+s32 FsReadFile(struct inode *inode, FILE_ID_T *fid, void *buffer, u64 count, u64 *rcount)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
-	if (fid == NULL) return(FFS_INVALIDFID);
+	/* check the validity of the given file id */
+	if (fid == NULL)
+		return FFS_INVALIDFID;
 
-	if (buffer == NULL) return(FFS_ERROR);
+	/* check the validity of pointer parameters */
+	if (buffer == NULL)
+		return FFS_ERROR;
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsReadFile(inode, fid, buffer, count, rcount);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-} 
+	return err;
+} /* end of FsReadFile */
 
-INT32 FsWriteFile(struct inode *inode, FILE_ID_T *fid, void *buffer, UINT64 count, UINT64 *wcount)
+s32 FsWriteFile(struct inode *inode, FILE_ID_T *fid, void *buffer, u64 count, u64 *wcount)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
-	if (fid == NULL) return(FFS_INVALIDFID);
+	/* check the validity of the given file id */
+	if (fid == NULL)
+		return FFS_INVALIDFID;
 
-	if (buffer == NULL) return(FFS_ERROR);
+	/* check the validity of pointer parameters */
+	if (buffer == NULL)
+		return FFS_ERROR;
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsWriteFile(inode, fid, buffer, count, wcount);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-}
+	return err;
+} /* end of FsWriteFile */
 
-INT32 FsTruncateFile(struct inode *inode, UINT64 old_size, UINT64 new_size)
+/* FsTruncateFile : resize the file length */
+s32 FsTruncateFile(struct inode *inode, u64 old_size, u64 new_size)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
-	PRINTK("FsTruncateFile entered (inode %p size %llu)\n", inode, new_size);
-	
-	err = ffsTruncateFile(inode, old_size, new_size);
- 
-	PRINTK("FsTruncateFile exitted (%d)\n", err);
+	DPRINTK("FsTruncateFile entered (inode %p size %llu)\n", inode, new_size);
 
+	err = ffsTruncateFile(inode, old_size, new_size);
+
+	DPRINTK("FsTruncateFile exitted (%d)\n", err);
+
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-}
+	return err;
+} /* end of FsTruncateFile */
 
-INT32 FsMoveFile(struct inode *old_parent_inode, FILE_ID_T *fid, struct inode *new_parent_inode, struct dentry *new_dentry)
+/* FsMoveFile : move(rename) a old file into a new file */
+s32 FsMoveFile(struct inode *old_parent_inode, FILE_ID_T *fid, struct inode *new_parent_inode, struct dentry *new_dentry)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = old_parent_inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
-	if (fid == NULL) return(FFS_INVALIDFID);
+	/* check the validity of the given file id */
+	if (fid == NULL)
+		return FFS_INVALIDFID;
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsMoveFile(old_parent_inode, fid, new_parent_inode, new_dentry);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-}
+	return err;
+} /* end of FsMoveFile */
 
-INT32 FsRemoveFile(struct inode *inode, FILE_ID_T *fid)
+/* FsRemoveFile : remove a file */
+s32 FsRemoveFile(struct inode *inode, FILE_ID_T *fid)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
-	if (fid == NULL) return(FFS_INVALIDFID);
+	/* check the validity of the given file id */
+	if (fid == NULL)
+		return FFS_INVALIDFID;
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsRemoveFile(inode, fid);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-}
+	return err;
+} /* end of FsRemoveFile */
 
-INT32 FsSetAttr(struct inode *inode, UINT32 attr)
+/* FsSetAttr : set the attribute of a given file */
+s32 FsSetAttr(struct inode *inode, u32 attr)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsSetAttr(inode, attr);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-}
+	return err;
+} /* end of FsSetAttr */
 
-INT32 FsReadStat(struct inode *inode, DIR_ENTRY_T *info)
+/* FsReadStat : get the information of a given file */
+s32 FsReadStat(struct inode *inode, DIR_ENTRY_T *info)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsGetStat(inode, info);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-}
+	return err;
+} /* end of FsReadStat */
 
-INT32 FsWriteStat(struct inode *inode, DIR_ENTRY_T *info)
+/* FsWriteStat : set the information of a given file */
+s32 FsWriteStat(struct inode *inode, DIR_ENTRY_T *info)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
-	PRINTK("FsWriteStat entered (inode %p info %p\n", inode, info);
+	DPRINTK("FsWriteStat entered (inode %p info %p\n", inode, info);
 
 	err = ffsSetStat(inode, info);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	PRINTK("FsWriteStat exited (%d)\n", err);
+	DPRINTK("FsWriteStat exited (%d)\n", err);
 
-	return(err);
-} 
+	return err;
+} /* end of FsWriteStat */
 
-INT32 FsMapCluster(struct inode *inode, INT32 clu_offset, UINT32 *clu)
+/* FsMapCluster : return the cluster number in the given cluster offset */
+s32 FsMapCluster(struct inode *inode, s32 clu_offset, u32 *clu)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
-	if (clu == NULL) return(FFS_ERROR);
+	/* check the validity of pointer parameters */
+	if (clu == NULL)
+		return FFS_ERROR;
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsMapCluster(inode, clu_offset, clu);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-}
+	return err;
+} /* end of FsMapCluster */
 
-INT32 FsCreateDir(struct inode *inode, UINT8 *path, FILE_ID_T *fid)
+/*----------------------------------------------------------------------*/
+/*  Directory Operation Functions                                       */
+/*----------------------------------------------------------------------*/
+
+/* FsCreateDir : create(make) a directory */
+s32 FsCreateDir(struct inode *inode, char *path, FILE_ID_T *fid)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
-	if ((fid == NULL) || (path == NULL) || (STRLEN(path) == 0))
-		return(FFS_ERROR);
+	/* check the validity of pointer parameters */
+	if ((fid == NULL) || (path == NULL) || (*path == '\0'))
+		return FFS_ERROR;
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsCreateDir(inode, path, fid);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-} 
+	return err;
+} /* end of FsCreateDir */
 
-INT32 FsReadDir(struct inode *inode, DIR_ENTRY_T *dir_entry)
+/* FsReadDir : read a directory entry from the opened directory */
+s32 FsReadDir(struct inode *inode, DIR_ENTRY_T *dir_entry)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
-	if (dir_entry == NULL) return(FFS_ERROR);
+	/* check the validity of pointer parameters */
+	if (dir_entry == NULL)
+		return FFS_ERROR;
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsReadDir(inode, dir_entry);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-} 
+	return err;
+} /* end of FsReadDir */
 
-INT32 FsRemoveDir(struct inode *inode, FILE_ID_T *fid)
+/* FsRemoveDir : remove a directory */
+s32 FsRemoveDir(struct inode *inode, FILE_ID_T *fid)
 {
-	INT32 err;
+	s32 err;
 	struct super_block *sb = inode->i_sb;
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
-	if (fid == NULL) return(FFS_INVALIDFID);
+	/* check the validity of the given file id */
+	if (fid == NULL)
+		return FFS_INVALIDFID;
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	err = ffsRemoveDir(inode, fid);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
-	return(err);
-}
+	return err;
+} /* end of FsRemoveDir */
 
 EXPORT_SYMBOL(FsMountVol);
 EXPORT_SYMBOL(FsUmountVol);
@@ -411,47 +544,30 @@ EXPORT_SYMBOL(FsCreateDir);
 EXPORT_SYMBOL(FsReadDir);
 EXPORT_SYMBOL(FsRemoveDir);
 
-#if EXFAT_CONFIG_KERNEL_DEBUG
-INT32 FsReleaseCache(struct super_block *sb)
+#ifdef CONFIG_EXFAT_KERNEL_DEBUG
+/* FsReleaseCache: Release FAT & buf cache */
+s32 FsReleaseCache(struct super_block *sb)
 {
 	FS_INFO_T *p_fs = &(EXFAT_SB(sb)->fs_info);
 
+	/* acquire the lock for file system critical section */
 	sm_P(&(fs_struct[p_fs->drv].v_sem));
 
 	FAT_release_all(sb);
 	buf_release_all(sb);
 
+	/* release the lock for file system critical section */
 	sm_V(&(fs_struct[p_fs->drv].v_sem));
 
 	return 0;
 }
+/* FsReleaseCache */
 
 EXPORT_SYMBOL(FsReleaseCache);
-#endif
+#endif /* CONFIG_EXFAT_KERNEL_DEBUG */
 
-static int __init init_exfat_core(void)
-{
-	int err;
+/*======================================================================*/
+/*  Local Function Definitions                                          */
+/*======================================================================*/
 
-	printk(KERN_INFO "exFAT: Core Version %s\n", EXFAT_VERSION);
-	
-	err = FsInit();
-	if (err) {
-		if (err == FFS_MEMORYERR)
-			return -ENOMEM;
-		else
-			return -EIO;
-	}
-
-	return 0;
-}
-
-static void __exit exit_exfat_core(void)
-{
-	FsShutdown();
-}
-
-module_init(init_exfat_core);
-module_exit(exit_exfat_core);
-
-MODULE_LICENSE("GPL");
+/* end of exfat_api.c */
