@@ -310,6 +310,9 @@ void mdp4_lcdc_wait4vsync(int cndx, long long *vtime)
 		return;
 	}
 
+	/* start timing generator & mmu if they are not started yet */
+	mdp4_overlay_lcdc_start();
+
 	spin_lock_irqsave(&vctrl->spin_lock, flags);
 
 	if (vctrl->wait_vsync_cnt == 0)
