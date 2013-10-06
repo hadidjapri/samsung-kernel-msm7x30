@@ -94,11 +94,20 @@ struct zram_meta {
 	struct zs_pool *mem_pool;
 };
 
+struct zram_slot_free {
+	unsigned long index;
+	struct zram_slot_free *next;
+};
+
 struct zram {
 	struct zram_meta *meta;
 	struct rw_semaphore lock; /* protect compression buffers, table,
 				   * 32bit stat counters against concurrent
 				   * notifications, reads and writes */
+
+	struct work_struct free_work;  /* handle pending free request */
+	struct zram_slot_free *slot_free_rq; /* list head of free request */
+
 	struct request_queue *queue;
 	struct gendisk *disk;
 	int init_done;
@@ -109,17 +118,8 @@ struct zram {
 	 * we can store in a disk.
 	 */
 	u64 disksize;	/* bytes */
+	spinlock_t slot_free_lock;
 
 	struct zram_stats stats;
 };
-
-#ifdef CONFIG_SYSFS
-extern struct attribute_group zram_disk_attr_group;
-#endif
-
-extern void zram_reset_device(struct zram *zram);
-extern struct zram_meta *zram_meta_alloc(u64 disksize);
-extern void zram_meta_free(struct zram_meta *meta);
-extern void zram_init_device(struct zram *zram, struct zram_meta *meta);
-
 #endif
