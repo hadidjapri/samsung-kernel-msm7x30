@@ -300,6 +300,10 @@ __v7_setup:
 #ifdef CONFIG_CPU_ENDIAN_BE8
 	orr	r6, r6, #1 << 25		@ big-endian page tables
 #endif
+/* Enable Non-cacheable streaming enhancement */ 
+	mrc  p15, 0, r10, c1, c0, 1    @ read aux control register
+	orr  r10, r10, #1 << 24    @ set bit #24
+	mcr  p15, 0, r10, c1, c0, 1    @ write aux control register
 #ifdef CONFIG_SWP_EMULATE
 	orr     r5, r5, #(1 << 10)              @ set SW bit in "clear"
 	bic     r6, r6, #(1 << 10)              @ clear it in "mmuset"
