@@ -1616,7 +1616,7 @@ config MSM_CPU_FREQ_MIN
 config MSM_CPU_FREQ_OVERCLOCKING
 	bool "Enable support for CPU overclocking"
 	depends on ARCH_MSM7X30
-	default y
+	default n
 	help
 	  Enabling this option allow to use all overclock frequencies.
 
