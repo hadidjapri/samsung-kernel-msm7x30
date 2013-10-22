@@ -56,7 +56,7 @@ static int lowmem_minfree[6] = {
 	3 * 512,	/* 6MB */
 	2 * 1024,	/* 8MB */
 	4 * 1024,	/* 16MB */
-	16 * 1024,	/* 64MB */
+	8 * 1024,	/* 32MB */
 };
 static int lowmem_minfree_size = 4;
 
