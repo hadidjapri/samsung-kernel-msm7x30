@@ -1,5 +1,8 @@
 #!/bin/bash
 
+#script adapted from anarkia's build script
+#thanks for anarkia
+
 # Add Colors
 green='\033[01;32m'
 red='\033[01;31m'
@@ -8,7 +11,6 @@ restore='\033[0m'
 
 clear
 
-# AK Variables
 export CROSS_COMPILE=~/android/toolchain/arm-cortex_a8-linux-gnueabi-linaro_4.8.2-2013.10/bin/arm-cortex_a8-linux-gnueabi-
 export ARCH=arm
 
