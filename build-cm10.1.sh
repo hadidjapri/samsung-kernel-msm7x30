@@ -16,9 +16,15 @@ export ARCH=arm
 
 DATE_START=$(date +"%s")
 
+#make sure it uses right branch
+git checkout cm-10.1
+
 # clean up last build
 echo "cleaning up your working area"
 make clean
+
+# load config
+make hadi_defconfig
 
 echo
 echo -e "${green}"
