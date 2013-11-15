@@ -53,6 +53,14 @@ make -j25
 
 echo -e "${green}"
 echo "-------------------------"
+echo "checking build"
+if [ -e $ZIMAGE_DIR/zImage ]
+then
+echo "Build finished succesfully,continuing"
+else
+echo "Build fail"
+  exit 0
+fi
 echo "Create: Kernel and Zip"
 echo "-------------------------"
 echo -e "${restore}"
